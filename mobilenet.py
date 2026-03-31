@@ -15,7 +15,7 @@ USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
 CPU_DEVICE = torch.device("cpu")
 
-mobilenet_v3_large = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT, pretrained=True)
+mobilenet_v3_large = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT, pretrained=False)
 
 # Modify the final layer for a custom number of classes (e.g., 10)
 mobilenet_v3_large.classifier[3] = nn.Linear(in_features=1280, out_features=14)
@@ -177,22 +177,24 @@ class XrayDataset(Dataset):
 #train_dataset = datasets.ImageFolder(root='C:\\src\\python\\UofC\\DATA\\archive\\total_images\\images', transform=transform)
 
 train_dataset = XrayDataset(transform=transform, train_type=TRAIN_TYPE_TRAIN)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
 
 
 #train_dataset = datasets.ImageFolder(root='C:\\src\\python\\UofC\\DATA\\archive\\total_images\\images', transform=transform)
 val_dataset = XrayDataset(transform=transform, train_type=TRAIN_TYPE_EVAL)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=256, shuffle=True)
 
 test_dataset = XrayDataset(transform=transform, train_type=TRAIN_TYPE_TEST)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=256, shuffle=True)
 
 
 # Define the loss function and optimizer
 criterion = nn.BCEWithLogitsLoss()
-optimizer = optim.Adam(mobilenet_v3_large.parameters(), lr=0.001)
+optimizer = optim.Adam(mobilenet_v3_large.parameters(), lr=0.05)
 # Training loop
-num_epochs = 10
+num_epochs = 15
+prev_loss = 1.0
+
 mobilenet_v3_large.train()
 for epoch in range(num_epochs):
     running_loss = 0.0
@@ -211,7 +213,15 @@ for epoch in range(num_epochs):
         
         running_loss += loss.item()
     
-    print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}")
+    loss_val = running_loss/len(train_loader)
+    print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss_val:.4f}")
+    
+    if(loss_val <= 0.01):
+        break
+
+    if(prev_loss < loss_val):
+        break
+    prev_loss = loss_val
 
 mobilenet_v3_large.eval()  # Set the model to evaluation mode
 
@@ -278,5 +288,5 @@ print("\nTest Mean AUROC:", test_mean_auc)
 for name, auc in zip(LABELS, test_auc_per_class):
     print(f"TEST {name:18s}: {auc:.4f}")
 
-torch.save(mobilenet_v3_large, '/model.pt')  # 전체 모델 저장
+torch.save(mobilenet_v3_large, 'model.pt')  # 전체 모델 저장
 
