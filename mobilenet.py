@@ -18,13 +18,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+#check GPU is enabled or not
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
 CPU_DEVICE = torch.device("cpu")
 
+#create MobileNetV3 model
 mobilenet_v3_large = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT, pretrained=False)
 
-# Modify the final layer for a custom number of classes (e.g., 10)
+# Modify the final layer for a custom number of classes (14 classes)
 mobilenet_v3_large.classifier[3] = nn.Linear(in_features=1280, out_features=14)
 mobilenet_v3_large.to(DEVICE)
 
@@ -41,12 +43,14 @@ TRAIN_TYPE_TRAIN = 0
 TRAIN_TYPE_EVAL = 1
 TRAIN_TYPE_TEST = 2
 
+#define disease labels
 LABELS = [
     "Atelectasis","Cardiomegaly","Effusion","Infiltration","Mass","Nodule",
     "Pneumonia","Pneumothorax","Consolidation","Edema","Emphysema","Fibrosis",
     "Pleural_Thickening","Hernia"
 ]
 
+#get disease index
 def get_diagnosis(diagnosis_label):
     match diagnosis_label:
         case "Atelectasis":
@@ -80,6 +84,7 @@ def get_diagnosis(diagnosis_label):
         case _: # No Finding
             return 14
 
+#implement CNN datase
 class XrayDataset(Dataset):
     # Constructor
     IMAGE_WIDTH = 224
@@ -109,12 +114,14 @@ class XrayDataset(Dataset):
                     continue
 
                 parts = line.split(",")
-    
+
+                #file name
                 image_file = parts[0]
-                # 첫번째가 wav 파일 경로
+                #disease name 
                 disease_part = parts[1]
 
                 row = np.zeros(14)
+                #parse multi lable
                 if (disease_part.find("|") >= 0):
                     diagnosis_arr = disease_part.split("|")
 
@@ -138,10 +145,12 @@ class XrayDataset(Dataset):
             # The transform is goint to be used on image
             self.transform = transform
 
+            #devide dataset size according to dataset type
             train_total_length = math.floor(len(image_files) * 0.8)
             eval_total_length = math.floor(len(image_files) * 0.1)
             test_total_length = math.floor(len(image_files) * 0.1)
 
+            #prepare data based on current data type
             if train_type == TRAIN_TYPE_TRAIN:
                 for index in range(0, train_total_length):
                     self.all_files.append(image_files[index])
@@ -167,27 +176,17 @@ class XrayDataset(Dataset):
 
     # Getter
     def __getitem__(self, idx):
-
-        #image = np.fromfile(self.all_files[idx], dtype=np.float32)
-        # h x 프레임 수 x 차원 수 배열로 변형
-        #image = image.reshape(int(1), int(self.IMAGE_HEIGHT), int(self.IMAGE_WIDTH))
-        #image = image.transpose(2, 1, 0)
-
+        #convert black and white image to 32bit image 
         img = cv2.imread(self.all_files[idx], cv2.IMREAD_GRAYSCALE)
         img_color_changed = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        #img_tensor = transform(img_color_changed).unsqueeze(0)
         img_tensor = transform(img_color_changed)
 
         return img_tensor, self.Y[idx]
 
-# Load dataset
-#train_dataset = datasets.ImageFolder(root='C:\\src\\python\\UofC\\DATA\\archive\\total_images\\images', transform=transform)
-
+# create and Load dataset based on type
 train_dataset = XrayDataset(transform=transform, train_type=TRAIN_TYPE_TRAIN)
 train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
 
-
-#train_dataset = datasets.ImageFolder(root='C:\\src\\python\\UofC\\DATA\\archive\\total_images\\images', transform=transform)
 val_dataset = XrayDataset(transform=transform, train_type=TRAIN_TYPE_EVAL)
 val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
 
@@ -201,17 +200,18 @@ prev_loss = 1.0
 # Define the loss function and optimizer
 criterion = nn.BCEWithLogitsLoss()
 
-#optimizer = optim.Adam(mobilenet_v3_large.parameters(), lr=0.05)
 optimizer = optim.AdamW(mobilenet_v3_large.parameters(), lr=3e-4, weight_decay=1e-2)
 # Cosine LR decay: starts at lr, anneals smoothly to 0 over T_max epochs
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCH_SIZE, eta_min=1e-6)
 
+#this is for plotting purpose
 history = {
     "train_loss": [],
     "val_loss":   [],
     "val_acc":    [],
 }
 
+#do train and update parameter
 def train():
     mobilenet_v3_large.train()
     running_loss = 0.0
@@ -240,14 +240,8 @@ def train():
     running_loss  /= n
     train_acc    = 100.0 * correct / total
     return running_loss, train_acc
-    
-    #if(loss_val <= 0.01):
-    #    break
 
-    #if(prev_loss < loss_val):
-    #    break
-    #prev_loss = loss_val
-
+#check validation loss and accuracy for this moment
 def evaluate():
     mobilenet_v3_large.eval()  # Set the model to evaluation mode
     val_loss = 0.0
@@ -272,6 +266,7 @@ def evaluate():
     print(f"  Val Loss: {val_loss:.5f}  |  Val Accuracy: {val_acc:.4f}%")
     return val_loss, val_acc
 
+#check test data and print AUC ROC result
 def testCheck():
     test_all_probs_array = []
     test_all_labels_array = []
@@ -304,6 +299,7 @@ def testCheck():
 
     return all_labels, all_probs, per_class_auc, mean_auc
 
+#plot training and validation curv
 def plot_training_curves(history):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle("Training History", fontsize=15, fontweight="bold")
@@ -333,7 +329,7 @@ def plot_training_curves(history):
     plt.savefig("training_curves.png", dpi=150)
     plt.show()
 
-
+#plot AUC ROC graph
 def plot_roc_curves(all_labels, all_probs, per_class_auc, mean_auc):
     """
     Two-panel figure:
@@ -394,12 +390,14 @@ def plot_roc_curves(all_labels, all_probs, per_class_auc, mean_auc):
     plt.savefig("roc_auc_curves.png", dpi=150)
     plt.show()
 
+#save weight file    
 def saveModel():
     now       = datetime.now()
     dt_string = now.strftime("_%Y%m%d_%H%M%S")
     torch.save(mobilenet_v3_large.state_dict(), "mobilenetv3" + dt_string + ".pt")
     print(f"  Model saved → mobilenetv3{dt_string}.pt")
 
+#execute training and validation for every epochs and plot and save weight file
 def executeDeepLearning():
     torch.manual_seed(0)
 
