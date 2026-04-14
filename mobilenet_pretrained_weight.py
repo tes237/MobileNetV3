@@ -24,7 +24,7 @@ DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
 CPU_DEVICE = torch.device("cpu")
 
 #create MobileNetV3 model
-mobilenet_v3_large = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT, pretrained=False)
+mobilenet_v3_large = models.mobilenet_v3_large(weights=models.MobileNet_V3_Large_Weights.DEFAULT, pretrained=True)
 
 # Modify the final layer for a custom number of classes (14 classes)
 mobilenet_v3_large.classifier[3] = nn.Linear(in_features=1280, out_features=14)
